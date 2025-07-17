@@ -1,11 +1,11 @@
 # baby_rev
 ## presentation
-for the L3AK_CTF 2025, I did the baby_rev challenge. 
-To solve it, I used IDA free and radare2 (to train myself to use both) and I tried to translate all the assembly code into C code by myself to best understand how it works.
+for the L3AK_CTF 2025, I completed the baby_rev challenge. 
+To solve it, I used IDA free and radare2 (to gain experience with both tools) and I tried to manually translate all the assembly code into C code by myself to better understand the way it works.
 
 ## first block of code in the main
 
-first of all, ida free gives us this first block of code in the main : 
+first of all, ida free gives us this first block of code in the `main` : 
 
 ```assembly
 endbr64
@@ -39,9 +39,10 @@ mov     [rbp+var_4], 0
 jmp     short loc_1502
 ```
 
-The first lines are easy to translate in c code :
+The first lines are straightforward to translate into C code :
+
 ```C
-static char input[0x40]; //it's a static char since it's in the .bss section
+static char input[0x40]; // It's a static char since it's in the .bss section
 
 int main(void){
   srand(time(0));
@@ -57,7 +58,7 @@ int main(void){
 }
 ```
 
-By looking further into the code, we can discover the flag string : L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}. It seems to be encrypted. The name of the function "init_remap" that is called at the beginning of the main and the structure of the code which seems to loop and then only start to tackle (comparison) operations with above mentioned flag variable can already lead us to emit a hypothesis : maybe our input is encrypted by a substitution function before being compared to the flag. 
+By looking further into the code, we can discover the flag string : `L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}`. It appears to be encrypted. The name of the function `init_remap`, called at the beginning of the `main`, combined with the code's structure, which seems to loop before doing comparison with the flag variable, suggest a hypothesis : perhaps our input is encrypted by a substitution function before being compared to the flag. 
 
 
 ## the function init_remap
@@ -111,39 +112,39 @@ pop     rbp
 retn
 ```
 
-first we can see that a variable named var_4 (which has nothing to do with var_4 variable in the main function of course) is initialized to 0.
+first we can see that a variable named var_4 (different from the local var_4 evoked in the main) is initialized to 0.
 
-Then we compare var_4 with 7Fh and we are going to loop in loc_129A until var_4 > 127. That looks like a for loop !
-The code in the loop is relatively simple to understand, we get
+Then var_4 is compared with 7Fh. The code loops back to loc_129A until var_4 > 127. This structure looks like a for loop.
+I rewrote this part in C : 
 ```C
 for (int var_4 = 0; var_4 <= 127; var_4++){
   remap[var_4] = var_4;
 }
 ```
 
-Then, at the index 47 of the remap tab, we place the character q. At index 48, the character w... and so on for all the characters in order on a qwerty keyboard.
+Next, at the index 47 of the `remap` array, we place the character 'q'. At index 48, the character w is placed and so on for all the characters in order on a QWERTY keyboard.
 Namely and in order : qwertyuiopasdfghjklzxcvbnm
 
-The value of rax should be 128 at the end of this function. It isn't useful. This should be a void function.
+The value of rax should be 128 at the end of this function. Nonetheless, as this value isn't used, it is hence a void function.
 
-So we have now the final code for the function
+Thus, we have the final code for the init_remap function :
 ```C
 static char remap[0x61];
 void init_remap(){
     for (int var_4 = 0; var_4 <= 127; var_4++){
         remap[var_4] = var_4;
     }
-    memncpy(&remap[47], "qwertyuiopasdfghjklzxcvbnm", 26);
-// no call to memncpy is made but the code is equivalent
+    memcpy(&remap[47], "qwertyuiopasdfghjklzxcvbnm", 26);
+// no direct call to memcpy is made but the code is equivalent
 }
 ```
 
-### starting my python solve script
+### Starting my python solve script
 I tried to recreate the remap variable in python
 ```python
 remap = list(map(chr, range(128)))
 keyboard = "qwertyuiopasdfghjklzxcvbnm"
-init = 0x4121 - 0x40C0 # the address at which we place the first char minus the beginning of the remap char[]. This gives us the index for the first value of the copy
+init = 0x4121 - 0x40C0 # This calculates the offset from the base address of the 'remap' array to the starting address of the copied characters, giving us the correct index
 for i in range(len(keyboard)):
     remap[i+init] = keyboard[i]
 print("remap :", remap)
@@ -153,12 +154,12 @@ I obtained this :
 remap : ['\x00', '\x01', '\x02', '\x03', '\x04', '\x05', '\x06', '\x07', '\x08', '\t', '\n', '\x0b', '\x0c', '\r', '\x0e', '\x0f', '\x10', '\x11', '\x12', '\x13', '\x14', '\x15', '\x16', '\x17', '\x18', '\x19', '\x1a', '\x1b', '\x1c', '\x1d', '\x1e', '\x1f', ' ', '!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'z', 'x', 'c', 'v', 'b', 'n', 'm', '{', '|', '}', '~', '\x7f']
 ```
 
-That is coherent with what we should find !
+That is coherent.
 
-## the following code of the main function
+## The following code of the main function
 
-Now that we know a bit more about what is happening in the code, we can look at the next part of the main function : the encryption.
-Before looking at the code, remember that at the end of the last part of the main, we had a "jmp loc_1502". So the execution starts at loc_1502.
+Now that we know a bit more about the code's behaviour, we can examine the next section of the main function : the encryption routine.
+The execution starts at loc_1502 after the part 1 of the main function.
 Let's look at this code : 
 
 
@@ -192,22 +193,23 @@ Let's look at this code :
 .text:000000000000150E                 movzx   eax, byte ptr [rax+rdx]
 .text:0000000000001512                 test    al, al
 .text:0000000000001514                 jnz     short loc_14C3
-    ; [...] the end of the code will be tackled in the next and final part :) :)
+    ; [...] the end of the code will be tackled in the next and final part 
 ```
 
 
-First of all, we can see that input[var_4] (with var_4 initialized at 0 in the first remember) is compared with 0. It's our input (which is a string). This looks like a while which loops on every characters of our input until we reach the '\0' ending char.
+First of all, we observe that input[var_4] (with var_4 initialized at 0 earlier) is compared with 0. This refers to our input (which is a string). This looks like a while loop which iterates on every characters of our input until the null terminator ('\0') is encountered.
 
-Until then , we iterate on loc_14C3.
-In loc_14C3, we can see first that we store the in the char var_5 the value input[var_4] 
+Until then, the loop continues at loc_14C3.
+At loc_14C3, we first see that we store the value input[var_4] in the variable var_5.
 
-Then, something interesting happens, we load it in rax and do a test al, al and then look at the SF flag.
+Then, an interesting operation happens, the value is loaded in rax and the instruction test al, al is executed. We then check the SF flag.
 The sign flag is set to the value of the MSB of al. What makes this interesting is that in this context, where we manipulate ascii characters, we have every reason to think we are dealing with unsigned char.
-As an assembly newbie, I found it interesting to see this use of the sign flag to do comparisons with 127 instead of a simple sign comparison.
+As an assembly beginner, I found this use of the sign flag interesting. Il enables us do comparisons 127 (and not an usual sign check).
 
-If we have indeed a char which ascii representation is above 127, then we will increment our index at loc_14FE and then do another iteration of the loop.
+If we have a char whose ascii representation is above 127, then we will increment the index var_4 (at loc_14FE), leading to another loop iteration.
 
 Else, we are going to encrypt this char with this code : input[var_4] = remap[var_5];
+Then we increment the value of the index (at loc_14FE).
 
 Hence, we know the equivalent C code for this part is going to be : 
 
@@ -227,7 +229,7 @@ int main(void){
   char var_4 = 0; // a stack stored variable
   // part 2
   char var_5;
-  while(input[var4] != '\0') {
+  while(input[var_4] != '\0') {
     var_5 = input[var_4];
     if (var_5 <= 127) {
         input[var_4] = remap[var_5];
@@ -374,9 +376,8 @@ int main(void){
   return 0;
 }
 ```
-
-sweet ! As you may have understood, this whole thing is probably useless since you can generate decompiled C code with ida free.. However, I like to understand deeply how things work and I thought it would be a good exercise.
-## solving the challenge (eventually :') )
+As you may have understood, this whole thing is probably useless since you can generate decompiled C code with ida free.. However, I like to understand deeply how things work and I thought it would be a good exercise.
+## solving the challenge
 
 As you may have understood, we could have made this a while ago.
 
