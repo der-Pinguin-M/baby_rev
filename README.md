@@ -407,7 +407,7 @@ print(decrypt("L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}"))
 
 We reverse the process to encrypt. Let me explain.
 The very part which encrypts one char is this one : 
-```assembly
+```C
     // main function line 29, see last part with all the code
     var_5 = input[var_4];
     if (var_5 <= 127) {
