@@ -36,7 +36,8 @@ lea     rax, input
 mov     rdi, rax        ; s
 call    _fgets
 mov     [rbp+var_4], 0
-jmp     short loc_1502```
+jmp     short loc_1502
+```
 
 The first lines are easy to translate in c code :
 ```C
@@ -49,7 +50,7 @@ int main(void){
   printf("Enter flag: ");
   fflush(stdout);
   fgets(input, 0x40, stdin); // 0x40 = 64
-  int var_4 = 0; // a stack stored variable
+  char var_4 = 0; // a stack stored variable
   [...] // we will discover this later ;)
 }
 ```
@@ -106,8 +107,6 @@ mov     cs:byte_413A, 6Dh ; 'm'
 nop
 pop     rbp
 retn
-
-
 ```
 
 first we can see that a variable named var_4 (which has nothing to do with var_4 variable in the main function of course) is initialized to 0.
@@ -117,10 +116,11 @@ The code in the loop is relatively simple to understand, we get
 ```C
 for (int var_4 = 0; var_4 <= 127; var_4++){
   remap[var_4] = var_4;
-}```
+}
+```
 
 Then, at the index 47 of the remap tab, we place the character q. At index 48, the character w... and so on for all the characters in order on a qwerty keyboard.
-Namely : qwertyuiopasdfghjklzxcvbnm
+Namely and in order : qwertyuiopasdfghjklzxcvbnm
 
 The value of rax should be 128 at the end of this function. It isn't useful. This should be a void function.
 
@@ -133,19 +133,25 @@ void init_remap(){
     }
     memncpy(&remap[47], "qwertyuiopasdfghjklzxcvbnm", 26);
 // no call to memncpy is made but the code is equivalent
-}```
+}
+```
 
 ### starting my python solve script
 I tried to recreate the remap variable in python
 ```python
-remap = list(range(128))
-for i, e in enumerate("qwertyuiopasdfghjklzxcvbnm"):
-  remap[i + 47] = e
+remap = list(map(chr, range(128)))
+keyboard = "qwertyuiopasdfghjklzxcvbnm"
+init = 47
+for i in range(len(clavier)):
+    keyboard[i+init] = keyboard[i]
 print("remap :", remap)
 ```
-I obtained this : remap : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 123, 124, 125, 126, 127]
+I obtained this : 
+```
+remap : ['\x00', '\x01', '\x02', '\x03', '\x04', '\x05', '\x06', '\x07', '\x08', '\t', '\n', '\x0b', '\x0c', '\r', '\x0e', '\x0f', '\x10', '\x11', '\x12', '\x13', '\x14', '\x15', '\x16', '\x17', '\x18', '\x19', '\x1a', '\x1b', '\x1c', '\x1d', '\x1e', '\x1f', ' ', '!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'z', 'x', 'c', 'v', 'b', 'n', 'm', '{', '|', '}', '~', '\x7f']
+```
 
-That is coherent with what we should find ! I know that some characters are str and others are int. Hopefully, you will see later that it is not a problem and it will even simplify the script.
+That is coherent with what we should find !
 
 ## the following code of the main function
 
@@ -186,3 +192,12 @@ Let's look at this code :
 .text:0000000000001514                 jnz     short loc_14C3
     ; [...] the end of the code will be tackled in the next and final part :) :)
 ```
+
+
+First of all, we can see that input[var_4] (with var_4 initialized at 0 in the first remember) is compared with 0. It's our input. This looks like a while which loops on every characters of our input until we reach the '\0' ending char.
+
+Until then , we iterate on loc_14C3.
+In loc_14C3, we can see first that we store the in the char var_5 the value input[var_4] 
+Then, something interesting happens, we load it in rax and do a test al, al and then look at the SF flag.
+The sign flag is set to the value of the MSB in al. What makes it interesting is that in this context, where we manipulate ascii characters, we have every reason to think we are dealing with unsigned char.
+So the best translation for this part in c code wouldn't be a if with a comparison to 0 but rather 127 as for me (to me it makes more sense this way).
