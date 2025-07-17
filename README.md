@@ -1,2 +1,188 @@
 # baby_rev
-for the L3AK_CTF 2025, I did the baby_rev challenge
+## presentation
+for the L3AK_CTF 2025, I did the baby_rev challenge. 
+To solve it, I used IDA free and radare2 (to train myself to use both) and I tried to translate all the assembly code into C code by myself to best understand how it works.
+
+## first block of code in the main
+
+first of all, ida free gives us this first block of code in the main : 
+
+```assembly
+endbr64
+push    rbp
+mov     rbp, rsp
+sub     rsp, 10h
+mov     edi, 0          ; timer
+call    _time
+mov     edi, eax        ; seed
+call    _srand
+mov     eax, 0
+call    init_remap
+lea     rax, sigint_handler
+mov     rsi, rax        ; handler
+mov     edi, 2          ; sig
+call    _signal
+lea     rax, format     ; "Enter flag: "
+mov     rdi, rax        ; format
+mov     eax, 0
+call    _printf
+mov     rax, cs:__bss_start
+mov     rdi, rax        ; stream
+call    _fflush
+mov     rax, cs:stdin@GLIBC_2_2_5
+mov     rdx, rax        ; stream
+mov     esi, 40h ; '@'  ; n
+lea     rax, input
+mov     rdi, rax        ; s
+call    _fgets
+mov     [rbp+var_4], 0
+jmp     short loc_1502```
+
+The first lines are easy to translate in c code :
+```C
+int main(void){
+  srand(time(0));
+  // eax = 0 just before our call to init_remap
+
+  init_remap(); // a function made by the user
+  signal(2, &sigint_handler);
+  printf("Enter flag: ");
+  fflush(stdout);
+  fgets(input, 0x40, stdin); // 0x40 = 64
+  int var_4 = 0; // a stack stored variable
+  [...] // we will discover this later ;)
+}
+```
+
+By looking further into the code, we can discover the flag string : L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}. It seems to be encrypted. The name of the function "init_remap" that is called at the beginning of the main and the structure of the code which seems to loop and then only start to tackle (comparison) operations with above mentioned flag variable can already lead us to emit a hypothesis : maybe our input is encrypted by a substitution function before being compared to the flag. 
+
+
+## the function init_remap
+
+```assembly
+push    rbp
+mov     rbp, rsp
+mov     [rbp+var_4], 0
+jmp     short loc_12B2
+
+loc_129A:
+mov     eax, [rbp+var_4]
+mov     ecx, eax
+mov     eax, [rbp+var_4]
+cdqe
+lea     rdx, remap
+mov     [rax+rdx], cl
+add     [rbp+var_4], 1
+
+loc_12B2:
+cmp     [rbp+var_4], 7Fh ; 7Fh = 127
+jle     short loc_129A
+mov     cs:byte_4121, 71h ; 'q'
+mov     cs:byte_4122, 77h ; 'w'
+mov     cs:byte_4123, 65h ; 'e'
+mov     cs:byte_4124, 72h ; 'r'
+mov     cs:byte_4125, 74h ; 't'
+mov     cs:byte_4126, 79h ; 'y'
+mov     cs:byte_4127, 75h ; 'u'
+mov     cs:byte_4128, 69h ; 'i'
+mov     cs:byte_4129, 6Fh ; 'o'
+mov     cs:byte_412A, 70h ; 'p'
+mov     cs:byte_412B, 61h ; 'a'
+mov     cs:byte_412C, 73h ; 's'
+mov     cs:byte_412D, 64h ; 'd'
+mov     cs:byte_412E, 66h ; 'f'
+mov     cs:byte_412F, 67h ; 'g'
+mov     cs:byte_4130, 68h ; 'h'
+mov     cs:byte_4131, 6Ah ; 'j'
+mov     cs:byte_4132, 6Bh ; 'k'
+mov     cs:byte_4133, 6Ch ; 'l'
+mov     cs:byte_4134, 7Ah ; 'z'
+mov     cs:byte_4135, 78h ; 'x'
+mov     cs:byte_4136, 63h ; 'c'
+mov     cs:byte_4137, 76h ; 'v'
+mov     cs:byte_4138, 62h ; 'b'
+mov     cs:byte_4139, 6Eh ; 'n'
+mov     cs:byte_413A, 6Dh ; 'm'
+nop
+pop     rbp
+retn
+
+
+```
+
+first we can see that a variable named var_4 (which has nothing to do with var_4 variable in the main function of course) is initialized to 0.
+
+Then we compare var_4 with 7Fh and we are going to loop in loc_129A until var_4 > 127. That looks like a for loop !
+The code in the loop is relatively simple to understand, we get
+```C
+for (int var_4 = 0; var_4 <= 127; var_4++){
+  remap[var_4] = var_4;
+}```
+
+Then, at the index 47 of the remap tab, we place the character q. At index 48, the character w... and so on for all the characters in order on a qwerty keyboard.
+Namely : qwertyuiopasdfghjklzxcvbnm
+
+The value of rax should be 128 at the end of this function. It isn't useful. This should be a void function.
+
+So we have now the final code for the function
+```C
+static char remap[0x61];
+void init_remap(){
+    for (int var_4 = 0; var_4 <= 127; var_4++){
+        remap[var_4] = var_4;
+    }
+    memncpy(&remap[47], "qwertyuiopasdfghjklzxcvbnm", 26);
+// no call to memncpy is made but the code is equivalent
+}```
+
+### starting my python solve script
+I tried to recreate the remap variable in python
+```python
+remap = list(range(128))
+for i, e in enumerate("qwertyuiopasdfghjklzxcvbnm"):
+  remap[i + 47] = e
+print("remap :", remap)
+```
+I obtained this : remap : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 123, 124, 125, 126, 127]
+
+That is coherent with what we should find ! I know that some characters are str and others are int. Hopefully, you will see later that it is not a problem and it will even simplify the script.
+
+## the following code of the main function
+
+Now that we know a bit more about what is happening in the code, we can look at the next part of the main function : the encryption.
+Before looking at the code, remember that at the end of the last part of the main, we had a "jmp loc_1502". So the execution starts at loc_1502.
+Let's look at this code : 
+
+
+
+```assembly
+.text:00000000000014C3 loc_14C3:                               ; CODE XREF: main+D6↓j
+.text:00000000000014C3                 mov     eax, [rbp+var_4]
+.text:00000000000014C6                 cdqe
+.text:00000000000014C8                 lea     rdx, input
+.text:00000000000014CF                 movzx   eax, byte ptr [rax+rdx]
+.text:00000000000014D3                 mov     [rbp+var_5], al
+.text:00000000000014D6                 movzx   eax, [rbp+var_5]
+.text:00000000000014DA                 test    al, al
+.text:00000000000014DC                 js      short loc_14FE
+.text:00000000000014DE                 movzx   eax, [rbp+var_5]
+.text:00000000000014E2                 cdqe
+.text:00000000000014E4                 lea     rdx, remap
+.text:00000000000014EB                 movzx   edx, byte ptr [rax+rdx]
+.text:00000000000014EF                 mov     eax, [rbp+var_4]
+.text:00000000000014F2                 cdqe
+.text:00000000000014F4                 lea     rcx, input
+.text:00000000000014FB                 mov     [rax+rcx], dl
+.text:00000000000014FE
+.text:00000000000014FE loc_14FE:                               ; CODE XREF: main+9E↑j
+.text:00000000000014FE                 add     [rbp+var_4], 1
+.text:0000000000001502
+.text:0000000000001502 loc_1502:                               ; CODE XREF: main+83↑j
+.text:0000000000001502                 mov     eax, [rbp+var_4]
+.text:0000000000001505                 cdqe
+.text:0000000000001507                 lea     rdx, input
+.text:000000000000150E                 movzx   eax, byte ptr [rax+rdx]
+.text:0000000000001512                 test    al, al
+.text:0000000000001514                 jnz     short loc_14C3
+    ; [...] the end of the code will be tackled in the next and final part :) :)
+```
