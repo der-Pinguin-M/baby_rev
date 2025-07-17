@@ -143,9 +143,9 @@ I tried to recreate the remap variable in python
 ```python
 remap = list(map(chr, range(128)))
 keyboard = "qwertyuiopasdfghjklzxcvbnm"
-init = 47
-for i in range(len(clavier)):
-    keyboard[i+init] = keyboard[i]
+init = 0x4121 - 0x40C0 # the address at which we place the first char minus the beginning of the remap char[]. This gives us the index for the first value of the copy
+for i in range(len(keyboard)):
+    remap[i+init] = keyboard[i]
 print("remap :", remap)
 ```
 I obtained this : 
@@ -212,6 +212,8 @@ Else, we are going to encrypt this char with this code : input[var_4] = remap[va
 Hence, we know the equivalent C code for this part is going to be : 
 
 ```C
+static char input[0x40]; //it's a static char since it's in the .bss section
+
 int main(void){
   //part 1
   srand(time(0));
@@ -289,6 +291,143 @@ just before we call the function strncmp, we have
   rdi = rax = input (1st argument)
   rsi = flag (2nd argument)
   rdx = the result of the strlen function which we got with rax = strlen("L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}")
+  
 Hence, this can be translated with strncmp(input, flag, strlen("L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}"))
 
-We are then going to analyze what was returned by this function with the test eax, eax instruction.
+Then, the test eax, eax instruction enables us to know whether the result of the strncmp was 0 or not. 
+
+If it is different from 0, we jump to loc_1556 (which I rewrote down there) :  
+
+```assembly
+.text:0000000000001556 loc_1556:                               ; CODE XREF: main+105↑j
+.text:0000000000001556                 lea     rax, aWrongFlagTryHa ; "Wrong flag. Try harder."
+.text:000000000000155D                 mov     rdi, rax        ; s
+.text:0000000000001560                 call    _puts
+```
+
+it is quite easy to understand. We do simply a puts("Wrong flag. Try harder."); Then the flow of execution will lead us to loc_1565 which we will study later (it's very easy).
+
+Else, we continue the normal of execution : 
+```assembly
+.text:0000000000001545                 lea     rax, s          ; "Correct! Here is your prize."
+.text:000000000000154C                 mov     rdi, rax        ; s
+.text:000000000000154F                 call    _puts
+.text:0000000000001554                 jmp     short loc_1565
+```
+
+Once again, this is easy to understand that the equivalent c code is : puts("Correct! Here is your prize.");
+
+Finally, we execute the code at loc_1565 : 
+```assembly
+.text:0000000000001565 loc_1565:                               ; CODE XREF: main+116↑j
+.text:0000000000001565                 mov     eax, 0
+.text:000000000000156A                 leave
+.text:000000000000156B                 retn
+```
+
+This is simply equivalent to a return 0;
+
+We have now finished to study all the code. Here is the final c code equivalent : 
+
+```C
+
+#include <stdio.h>
+
+static char input[0x40]; //it's a static char since it's in the .bss section
+static char remap[0x61];
+
+void init_remap(){
+    for (int var_4 = 0; var_4 <= 127; var_4++){
+        remap[var_4] = var_4;
+    }
+    memncpy(&remap[47], "qwertyuiopasdfghjklzxcvbnm", 26);
+    // no call to memncpy is made but the generated assembly is equivalent
+}
+
+int main(void){
+  //part 1
+  srand(time(0));
+  // eax = 0 just before our call to init_remap
+
+  init_remap(); // a function made by the user
+  signal(2, &sigint_handler);
+  printf("Enter flag: ");
+  fflush(stdout);
+  fgets(input, 0x40, stdin); // 0x40 = 64
+  char var_4 = 0; // a stack stored variable
+  // part 2
+  char var_5;
+  while(input[var4] != '\0') {
+    var_5 = input[var_4];
+    if (var_5 <= 127) {
+        input[var_4] = remap[var_5];
+    }
+    var_4++;
+  }
+
+  // part 3
+  if (strncmp(input, flag, strlen("L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}")){
+      puts("Wrong flag. Try harder.");
+  }else{
+      puts("Correct! Here is your prize.");
+  }
+  return 0;
+}
+```
+
+sweet ! As you may have understood, this whole thing is probably useless since you can generate decompiled C code with ida free.. However, I like to understand deeply how things work and I thought it would be a good exercise.
+## solving the challenge (eventually :') )
+
+As you may have understood, we could have made this a while ago.
+
+```python
+# the first part, we already wrote that earlier
+
+remap = list(map(chr, range(128)))
+keyboard = "qwertyuiopasdfghjklzxcvbnm"
+init = 0x4121 - 0x40C0
+for i in range(len(keyboard)):
+    remap[i+init] = keyboard[i]
+
+# print("remap :", remap) we don't need this line anymore
+
+# next part:
+
+def decrypt(text):
+    result = ""
+    for e in text:
+        if e not in remap:
+            result += e
+            continue
+        result += chr(remap.index(e))
+    return result
+
+print(decrypt("L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}"))
+```
+
+We reverse the process to encrypt. Let me explain.
+The very part which encrypts one char is this one : 
+```assembly
+    // main function line 29, see last part with all the code
+    var_5 = input[var_4];
+    if (var_5 <= 127) {
+        input[var_4] = remap[var_5];
+    }
+```
+
+Let there be e, the i th char of the text encrypted. remap.index(e) gives us the associated var_5 value in the C code.
+As we can see, var_5 = input[var_4]; !
+Hence we can just use chr(remap.index(e)) to get back to the original value of input and decrypt the text.
+
+Since throughout all this report, I went into a lot of details, I am also going to explain briefly this part of my python code : 
+
+```python
+if e not in remap:
+  result += e
+  continue
+```
+
+That's just because "3", for instance, isn't in remap. So to get the complete key, we need to add it to the final string without any encryption.
+
+Finally, we get the result : L3AK{you_are_not_gonna_guess_me}
+
