@@ -41,6 +41,8 @@ jmp     short loc_1502
 
 The first lines are easy to translate in c code :
 ```C
+static char input[0x40]; //it's a static char since it's in the .bss section
+
 int main(void){
   srand(time(0));
   // eax = 0 just before our call to init_remap
@@ -194,10 +196,99 @@ Let's look at this code :
 ```
 
 
-First of all, we can see that input[var_4] (with var_4 initialized at 0 in the first remember) is compared with 0. It's our input. This looks like a while which loops on every characters of our input until we reach the '\0' ending char.
+First of all, we can see that input[var_4] (with var_4 initialized at 0 in the first remember) is compared with 0. It's our input (which is a string). This looks like a while which loops on every characters of our input until we reach the '\0' ending char.
 
 Until then , we iterate on loc_14C3.
 In loc_14C3, we can see first that we store the in the char var_5 the value input[var_4] 
+
 Then, something interesting happens, we load it in rax and do a test al, al and then look at the SF flag.
-The sign flag is set to the value of the MSB in al. What makes it interesting is that in this context, where we manipulate ascii characters, we have every reason to think we are dealing with unsigned char.
-So the best translation for this part in c code wouldn't be a if with a comparison to 0 but rather 127 as for me (to me it makes more sense this way).
+The sign flag is set to the value of the MSB of al. What makes this interesting is that in this context, where we manipulate ascii characters, we have every reason to think we are dealing with unsigned char.
+As an assembly newbie, I found it interesting to see this use of the sign flag to do comparisons with 127 instead of a simple sign comparison.
+
+If we have indeed a char which ascii representation is above 127, then we will increment our index at loc_14FE and then do another iteration of the loop.
+
+Else, we are going to encrypt this char with this code : input[var_4] = remap[var_5];
+
+Hence, we know the equivalent C code for this part is going to be : 
+
+```C
+int main(void){
+  //part 1
+  srand(time(0));
+  // eax = 0 just before our call to init_remap
+
+  init_remap(); // a function made by the user
+  signal(2, &sigint_handler);
+  printf("Enter flag: ");
+  fflush(stdout);
+  fgets(input, 0x40, stdin); // 0x40 = 64
+  char var_4 = 0; // a stack stored variable
+  // part 2
+  char var_5;
+  while(input[var4] != '\0') {
+    var_5 = input[var_4];
+    if (var_5 <= 127) {
+        input[var_4] = remap[var_5];
+    }
+    var_4++;
+  }
+  // [...] the end of the code will be studied in the last part
+}
+```
+
+## the end of the main function
+
+We finally arrived to the last part of the code that we are going to study : 
+
+```assembly
+.text:0000000000001502 loc_1502:                               ; CODE XREF: main+83↑j
+.text:0000000000001502                 mov     eax, [rbp+var_4]
+.text:0000000000001505                 cdqe
+.text:0000000000001507                 lea     rdx, input
+.text:000000000000150E                 movzx   eax, byte ptr [rax+rdx]
+.text:0000000000001512                 test    al, al
+.text:0000000000001514                 jnz     short loc_14C3
+.text:0000000000001516                 lea     rax, flag       ; "L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}"
+.text:000000000000151D                 mov     rdi, rax        ; s
+.text:0000000000001520                 call    _strlen
+.text:0000000000001525                 mov     rdx, rax        ; n
+.text:0000000000001528                 lea     rax, flag       ; "L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}"
+.text:000000000000152F                 mov     rsi, rax        ; s2
+.text:0000000000001532                 lea     rax, input
+.text:0000000000001539                 mov     rdi, rax        ; s1
+.text:000000000000153C                 call    _strncmp
+.text:0000000000001541                 test    eax, eax
+.text:0000000000001543                 jnz     short loc_1556
+.text:0000000000001545                 lea     rax, s          ; "Correct! Here is your prize."
+.text:000000000000154C                 mov     rdi, rax        ; s
+.text:000000000000154F                 call    _puts
+.text:0000000000001554                 jmp     short loc_1565
+.text:0000000000001556 ; ---------------------------------------------------------------------------
+.text:0000000000001556
+.text:0000000000001556 loc_1556:                               ; CODE XREF: main+105↑j
+.text:0000000000001556                 lea     rax, aWrongFlagTryHa ; "Wrong flag. Try harder."
+.text:000000000000155D                 mov     rdi, rax        ; s
+.text:0000000000001560                 call    _puts
+.text:0000000000001565
+.text:0000000000001565 loc_1565:                               ; CODE XREF: main+116↑j
+.text:0000000000001565                 mov     eax, 0
+.text:000000000000156A                 leave
+.text:000000000000156B                 retn
+.text:000000000000156B ; } // starts at 143E
+.text:000000000000156B main            endp
+.text:000000000000156B
+.text:000000000000156B _text           ends
+.text:000000000000156B
+```
+
+Actually, we have already study the code until address .text:0000000000001514 (the jnz short loc_14C3 instruction) which is part of the conditionnal part of the while loop.
+
+Then, when the loop is finished, we call a strlen to get the length of the flag.
+Then, at the isntruction : text:0000000000001539                 mov     rdi, rax        ; s1
+just before we call the function strncmp, we have
+  rdi = rax = input (1st argument)
+  rsi = flag (2nd argument)
+  rdx = the result of the strlen function which we got with rax = strlen("L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}")
+Hence, this can be translated with strncmp(input, flag, strlen("L3AK{ngx_qkt_fgz_ugffq_uxtll_dt}"))
+
+We are then going to analyze what was returned by this function with the test eax, eax instruction.
